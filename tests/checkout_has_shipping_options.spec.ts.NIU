@@ -1,0 +1,11 @@
+import { test, describe } from "../fixtures";
+import * as actions from "@utils/base/web/actions";
+import * as checkoutLocators from "../locators/checkout.locator";
+
+describe("Checkout - has shipping options", () => {
+
+    test("Check shipping options exist", async ({ checkoutPage, page  }) => {
+        await page.locator(checkoutLocators.email_field).isVisible();
+    });
+
+});
