@@ -86,12 +86,14 @@ export default class CheckoutPage extends BasePage {
         return actions.parsePrice(subTotal);
     }
 
-    async testSuccessPage() {
+    async testSuccessPage() : Promise<string> {
         this.workerInfo.project.name + ": Testing Success Page ";
         await this.page.waitForLoadState("networkidle");
         await this.page.waitForLoadState("domcontentloaded");
         await this.page.waitForSelector(pageLocators.pageTitle);
         expect(this.page.locator(pageLocators.pageTitle)).toHaveText(data.success_page_heading);
+        const orderId = await this.page.locator(locators.success_order_id).first().textContent();
+        return orderId;
     }
 
 }
