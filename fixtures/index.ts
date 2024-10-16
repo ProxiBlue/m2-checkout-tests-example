@@ -4,6 +4,7 @@ import checkoutPage from "../pages/checkout.page";
 import SimpleProductPage from "@hyva/pages/simple_product.page"
 import { Customer } from "@hyva/fixtures/customer";
 import { CustomerData } from '@hyva/interfaces/CustomerData';
+import CustomerPage from "@hyva/pages/customer.page";
 
 
 type pages = {
@@ -11,6 +12,7 @@ type pages = {
     checkoutPage: checkoutPage;
     simpleProductPage: SimpleProductPage;
     customerData: CustomerData;
+    customerPage: CustomerPage;
 };
 
 const testPages = hyvaBase.extend<pages>({
@@ -28,7 +30,9 @@ const testPages = hyvaBase.extend<pages>({
         const customerData: CustomerData = customer.getCustomerData();
         await use(customerData);
     },
-
+    customerPage: async ({ page }, use, workerInfo) => {
+        await use(new CustomerPage(page, workerInfo));
+    }
 });
 
 export const test = testPages;
