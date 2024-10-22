@@ -9,11 +9,11 @@ describe("Checkout actions with one Item in cart", () => {
         await simpleProductPage.addToCart();
     });
 
-    test("it can proceed to checkout from cart page ", async ({cartPage, checkoutPage, customerData}) => {
+    test("it can proceed to checkout from cart page", async ({cartPage, checkoutPage, customerData, page}) => {
         await cartPage.navigateTo();
         const itemLineTotal = await cartPage.getLineItemsPrices();
         await cartPage.checkSubtotalMatches(itemLineTotal.toFixed(2));
-        await checkoutPage.clickProceedToCheckout();
+        await cartPage.clickProceedToCheckout();
         await checkoutPage.fillCustomerForm(customerData)
         await checkoutPage.selectShippingMethod();
         const checkoutSubTotal = await checkoutPage.getSubTotal();

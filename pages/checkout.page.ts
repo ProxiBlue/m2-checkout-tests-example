@@ -1,11 +1,11 @@
-import BasePage from "@hyva/pages/base.page";
+import BasePage from "@common/pages/base.page";
 import type {Page, TestInfo} from "@playwright/test";
 import {expect} from "../fixtures";
 import * as actions from "@utils/base/web/actions";
 import * as locators from "../locators/checkout.locator";
 import * as pageLocators from "@hyva/locators/page.locator"
 import * as customerForm from "../locators/customer_form.locator";
-import { CustomerData } from '@hyva/interfaces/CustomerData';
+import { CustomerData } from '@common/interfaces/CustomerData';
 
 
 // dynamically import the test JSON data based on the APP_NAME env variable
@@ -32,16 +32,9 @@ export default class CheckoutPage extends BasePage {
         const url = this.page.url();
     }
 
-    async clickProceedToCheckout() {
-        this.workerInfo.project.name + ": Proceed to Checkout ",
-        await this.page.locator(locators.checkout_button).click();
-        await this.page.waitForLoadState("domcontentloaded");
-        await this.page.waitForSelector(locators.shipping_label);
-        expect(this.page.locator(locators.title)).toContainText(data.header_title);
-    }
-
     async fillCustomerForm(customerData : CustomerData) {
         this.workerInfo.project.name + ": Fill customer form ";
+        await this.page.waitForSelector(locators.shipping_label);
         await this.page.fill(customerForm['email'], customerData.email);
         await this.page.fill(customerForm['firstname'], customerData.firstName);
         await this.page.fill(customerForm['lastname'], customerData.lastName);
