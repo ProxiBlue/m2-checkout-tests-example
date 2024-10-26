@@ -12,6 +12,7 @@ describe("Checkout actions with one Item in cart", () => {
     test("it can proceed to checkout from cart page", async ({cartPage, checkoutPage, customerData, page}) => {
         await cartPage.navigateTo();
         const itemLineTotal = await cartPage.getLineItemsPrices();
+        //@ts-ignore
         await cartPage.checkSubtotalMatches(itemLineTotal.toFixed(2));
         await cartPage.clickProceedToCheckout();
         await checkoutPage.fillCustomerForm(customerData)
@@ -19,7 +20,7 @@ describe("Checkout actions with one Item in cart", () => {
         const checkoutSubTotal = await checkoutPage.getSubTotal();
         // test totals matches
         expect(itemLineTotal).toEqual(checkoutSubTotal);
-        await checkoutPage.selectPaymentmethod();
+        await checkoutPage.selectPaymentmethodByName('Check / Money order');
         await checkoutPage.actionPlaceOrder();
         await checkoutPage.testSuccessPage();
     });

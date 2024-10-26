@@ -1,7 +1,7 @@
 {
   "env": {
-    "dev": { "url": "https://pvcpipesupplies.ddev.site/" },
-    "live": { "url": "https://pvcpipesupplies.com/" }
+    "dev": { "url": "" },
+    "live": { "url": "" }
   },
   "mailcatcher": "",
   "skipBaseTests": [

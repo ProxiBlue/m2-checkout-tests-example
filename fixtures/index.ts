@@ -1,5 +1,5 @@
 import { test as baseTest } from "@hyva/fixtures";
-import checkoutPage from "../pages/checkout.page";
+import checkoutPage from "@checkout/pages/checkout.page";
 
 
 type pages = {

@@ -19,7 +19,7 @@ describe("Checkout - detects existing account for logon", () => {
         const responseBody =  await response.text();
         expect(responseBody).toContain('false');
         await page.waitForSelector(locators.password_field);
-        expect(page.locator(locators.password_field)).toBeVisible();
+        await expect(page.locator(locators.password_field)).toBeVisible();
 
     });
 
