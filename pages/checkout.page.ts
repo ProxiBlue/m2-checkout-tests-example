@@ -1,6 +1,5 @@
 import BasePage from "@common/pages/base.page";
-import type {Page, TestInfo} from "@playwright/test";
-import {expect} from "../fixtures";
+import {Page, TestInfo, expect, test} from "@playwright/test";
 import * as actions from "@utils/base/web/actions";
 import * as locators from "../locators/checkout.locator";
 import * as pageLocators from "@hyva/locators/page.locator"
@@ -22,6 +21,7 @@ if (fs.existsSync(__dirname + '/../../' + process.env.APP_NAME + JSONDataFile)) 
         data = dynamicData;
     });
 }
+
 export default class CheckoutPage extends BasePage {
     constructor(public page: Page, public workerInfo: TestInfo) {
         super(page, workerInfo, data, locators); // pass the data and locators to teh base page class
@@ -44,12 +44,12 @@ export default class CheckoutPage extends BasePage {
         await this.page.fill(customerForm.city,customerData.city);
         await this.page.locator(customerForm.zip).pressSequentially(customerData.zip);
         await this.page.fill(customerForm.phone, customerData.phone);
-        await this.page.selectOption(customerForm.state, { label: customerData.state });
+        await this.page.selectOption(customerForm.state, '59');
     }
 
     async selectShippingMethod() {
         // shipperHQ must be disabled by setting flatrate enabled, setting it as fallback and setting timeout to 0
-        await this.page.check('input[name="ko_unique_1"]');
+        await this.page.check('input[value="flatrate_flatrate"]');
         await this.page.locator(locators.shipping_next_button).click();
     }
 
@@ -79,9 +79,8 @@ export default class CheckoutPage extends BasePage {
     }
 
     async testSuccessPage() : Promise<string> {
-        await this.page.waitForLoadState("networkidle");
         await this.page.waitForLoadState("domcontentloaded");
-        await this.page.waitForSelector(pageLocators.pageTitle);
+        await this.page.waitForTimeout(5000);
         //@ts-ignore
         expect(this.page.locator(pageLocators.pageTitle)).toHaveText(this.data.default.success_page_heading);
         const orderId = await this.page.locator(locators.success_order_id).first().textContent();

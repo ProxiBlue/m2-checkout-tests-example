@@ -1,7 +1,7 @@
 {
   "env": {
-    "dev": { "url": "" },
-    "live": { "url": "" }
+    "dev": { "url": "https://pps-mageos110.ddev.site/" },
+    "live": { "url": "https://pps-mageos110.ddev.site/" }
   },
   "mailcatcher": "",
   "skipBaseTests": [
