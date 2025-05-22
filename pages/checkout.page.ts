@@ -9,17 +9,38 @@ import { CustomerData } from '@common/interfaces/CustomerData';
 
 // dynamically import the test JSON data based on the APP_NAME env variable
 // and if the file exixts in APP path, and if not default to teh base data
-let data = {};
+interface CheckoutData {
+    default: {
+        url?: string;
+        header_title?: string;
+        page_title_text?: string;
+        subtotal_label?: string;
+        grandtotal_label?: string;
+        success_page_heading?: string;
+    };
+}
+
+let data: CheckoutData = {"default": {}};
+// Load data synchronously to ensure it's available when needed
 const fs = require("fs");
-let JSONDataFile = '/data/checkout.data.json'
-if (fs.existsSync(__dirname + '/../../' + process.env.APP_NAME + JSONDataFile)) {
-    import('../../' + process.env.APP_NAME + JSONDataFile, { assert: { type: "json" } }).then((dynamicData) => {
-        data = dynamicData;
-    });
-} else {
-    import('..' + JSONDataFile, { assert: { type: "json" } }).then((dynamicData) => {
-        data = dynamicData;
-    });
+try {
+    let dataPath;
+    let JSONDataFile = '/data/checkout.data.json';
+    if (fs.existsSync(__dirname + '/../../' + process.env.APP_NAME + JSONDataFile)) {
+        dataPath = __dirname + '/../../' + process.env.APP_NAME + JSONDataFile;
+    } else {
+        dataPath = __dirname + '/..' + JSONDataFile;
+    }
+    const jsonData = fs.readFileSync(dataPath, 'utf8');
+    let parsedData = JSON.parse(jsonData);
+    // Ensure data has a default property
+    if (!parsedData.default) {
+        data = { default: parsedData };
+    } else {
+        data = parsedData;
+    }
+} catch (error) {
+    console.error(`Error loading checkout data: ${error}`);
 }
 
 export default class CheckoutPage extends BasePage {
@@ -28,9 +49,8 @@ export default class CheckoutPage extends BasePage {
     }
 
     async navigateTo() {
-        //@ts-ignore
-        await actions.navigateTo(this.page, process.env.URL + this.data.default.url, this.workerInfo);
-        const url = this.page.url();
+        const url: string = this.data.default.url || '';
+        await actions.navigateTo(this.page, process.env.URL + url, this.workerInfo);
     }
 
     async fillCustomerForm(customerData : CustomerData) {
@@ -81,11 +101,10 @@ export default class CheckoutPage extends BasePage {
     async testSuccessPage() : Promise<string> {
         await this.page.waitForLoadState("domcontentloaded");
         await this.page.waitForTimeout(5000);
-        //@ts-ignore
-        expect(this.page.locator(pageLocators.pageTitle)).toHaveText(this.data.default.success_page_heading);
+        const successPageHeading = this.data.default.success_page_heading || '';
+        expect(this.page.locator(pageLocators.pageTitle)).toHaveText(successPageHeading);
         const orderId = await this.page.locator(locators.success_order_id).first().textContent();
-        //@ts-ignore
-        return orderId;
+        return orderId ?? "";
     }
 
 }

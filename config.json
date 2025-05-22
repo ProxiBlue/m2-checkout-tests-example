@@ -1,10 +1,10 @@
 {
   "env": {
-    "dev": { "url": "https://pps-mageos110.ddev.site/" },
-    "live": { "url": "https://pps-mageos110.ddev.site/" }
+    "dev": { "url": "https://pps-mageos110.ddev.site/" }
   },
   "mailcatcher": "",
   "skipBaseTests": [
-  ]
+  ],
+  "faker_locale": "en_US"
 }
 

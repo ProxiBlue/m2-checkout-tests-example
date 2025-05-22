@@ -4,11 +4,10 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "test-dev": "APP_NAME=checkout NODE_ENV=dev TEST_BASE=checkout playwright test",
-    "test-uat": "APP_NAME=checkout NODE_ENV=uat TEST_BASE=checkout playwright test",
-    "test-live": "APP_NAME=checkout NODE_ENV=live playwright test",
-    "test:debug": "APP_NAME=checkout NODE_ENV=dev PWDEBUG=1 playwright test",
+    "test": "APP_NAME=checkout NODE_ENV=dev npx playwright test",
+    "test:ui": "APP_NAME=checkout NODE_ENV=dev npx playwright test --ui",
+    "test:debug": "APP_NAME=checkout NODE_ENV=dev PWDEBUG=1 npx playwright test",
     "report": "npx playwright show-report reports/playwright-report",
-    "allure": "npx allure generate reports/allure/allure-result -o reports/allure/allure-report --clean && npx allure open reports/allure/allure-report"
+    "test:display": "APP_NAME=checkout NODE_ENV=dev npx playwright test --headed --workers=1"
   }
 }

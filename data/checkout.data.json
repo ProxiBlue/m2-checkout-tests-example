@@ -1,8 +1,10 @@
 {
-  "url": "checkout/index",
-  "header_title": "Checkout",
-  "page_title_text" : "CHECKOUT",
-  "subtotal_label" : "Subtotal",
-  "grandtotal_label" : "Grand Total",
-  "success_page_heading" : "Thank you for your purchase!"
+  "default": {
+    "url": "checkout/index",
+    "header_title": "Checkout",
+    "page_title_text" : "CHECKOUT",
+    "subtotal_label" : "Subtotal",
+    "grandtotal_label" : "Grand Total",
+    "success_page_heading" : "Thank you for your purchase!"
+  }
 }
