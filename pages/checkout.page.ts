@@ -1,14 +1,13 @@
 import BasePage from "@common/pages/base.page";
 import {Page, TestInfo, expect, test} from "@playwright/test";
-import * as actions from "@utils/base/web/actions";
 import * as locators from "../locators/checkout.locator";
 import * as pageLocators from "@hyva/locators/page.locator"
 import * as customerForm from "../locators/customer_form.locator";
 import { CustomerData } from '@common/interfaces/CustomerData';
+import { loadJsonData } from "@utils/functions/file";
+import { parsePrice } from "@utils/functions/price";
 
-
-// dynamically import the test JSON data based on the APP_NAME env variable
-// and if the file exixts in APP path, and if not default to teh base data
+// Define the CheckoutData interface
 interface CheckoutData {
     default: {
         url?: string;
@@ -20,27 +19,15 @@ interface CheckoutData {
     };
 }
 
-let data: CheckoutData = {"default": {}};
-// Load data synchronously to ensure it's available when needed
-const fs = require("fs");
-try {
-    let dataPath;
-    let JSONDataFile = '/data/checkout.data.json';
-    if (fs.existsSync(__dirname + '/../../' + process.env.APP_NAME + JSONDataFile)) {
-        dataPath = __dirname + '/../../' + process.env.APP_NAME + JSONDataFile;
-    } else {
-        dataPath = __dirname + '/..' + JSONDataFile;
-    }
-    const jsonData = fs.readFileSync(dataPath, 'utf8');
-    let parsedData = JSON.parse(jsonData);
-    // Ensure data has a default property
-    if (!parsedData.default) {
-        data = { default: parsedData };
-    } else {
-        data = parsedData;
-    }
-} catch (error) {
-    console.error(`Error loading checkout data: ${error}`);
+// Default checkout data structure
+const defaultData: CheckoutData = {"default": {}};
+
+// Load the checkout data using the utility function
+let data = loadJsonData<CheckoutData>('checkout.data.json', 'checkout', defaultData);
+
+// Ensure data has a default property
+if (data && !data.default) {
+    data = { default: data as any };
 }
 
 export default class CheckoutPage extends BasePage {
@@ -50,7 +37,11 @@ export default class CheckoutPage extends BasePage {
 
     async navigateTo() {
         const url: string = this.data.default.url || '';
-        await actions.navigateTo(this.page, process.env.URL + url, this.workerInfo);
+        await test.step(
+            this.workerInfo.project.name + ": Go to " + process.env.url + url,
+            async () => await this.page.goto(process.env.url + url)
+        );
+        await this.page.waitForLoadState('domcontentloaded');
     }
 
     async fillCustomerForm(customerData : CustomerData) {
@@ -94,8 +85,11 @@ export default class CheckoutPage extends BasePage {
     }
 
     async getSubTotal() {
-        let subTotal = await actions.getInnerText(this.page, '.data.table.table-totals .totals.sub .amount .price', this.workerInfo);
-        return actions.parsePrice(subTotal);
+        let subTotal = await test.step(
+            this.workerInfo.project.name + ": Get innertext from .data.table.table-totals .totals.sub .amount .price",
+            async () => await this.page.innerText('.data.table.table-totals .totals.sub .amount .price')
+        );
+        return parsePrice(subTotal);
     }
 
     async testSuccessPage() : Promise<string> {
