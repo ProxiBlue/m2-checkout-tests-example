@@ -1,4 +1,4 @@
-export const email = "#customer-email"
+export const email = "#customer-email-fieldset #customer-email"
 export const firstname = "input[name=\"firstname\"]"
 export const lastname = "input[name=\"lastname\"]"
 export const company = "input[name=\"company\"]"

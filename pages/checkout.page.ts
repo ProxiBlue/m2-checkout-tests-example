@@ -46,9 +46,6 @@ export default class CheckoutPage extends BasePage {
 
     async fillCustomerForm(customerData : CustomerData) {
         await this.page.waitForSelector(locators.shipping_label);
-        if (await this.page.isVisible(customerForm.email)) {
-            await this.page.fill(customerForm.email, customerData.email);
-        }
         await this.page.fill(customerForm.firstname, customerData.firstName);
         await this.page.fill(customerForm.lastname, customerData.lastName);
         await this.page.fill(customerForm.street_address, customerData.street_one_line);

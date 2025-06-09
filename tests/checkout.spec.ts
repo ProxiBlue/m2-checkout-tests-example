@@ -1,4 +1,5 @@
 import {test, describe, expect } from "../fixtures";
+import * as customerForm from "@checkout/locators/customer_form.locator";
 
 describe("Checkout actions with one Item in cart", () => {
 
@@ -15,6 +16,9 @@ describe("Checkout actions with one Item in cart", () => {
         //@ts-ignore
         await cartPage.checkSubtotalMatches(itemLineTotal.toFixed(2));
         await cartPage.clickProceedToCheckout();
+        await checkoutPage.page.waitForLoadState("domcontentloaded");
+        await checkoutPage.page.fill(customerForm.email, customerData.email);
+        await checkoutPage.page.waitForLoadState("domcontentloaded");
         await checkoutPage.fillCustomerForm(customerData)
         await checkoutPage.selectShippingMethod();
         const checkoutSubTotal = await checkoutPage.getSubTotal();
