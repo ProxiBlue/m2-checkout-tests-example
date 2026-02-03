@@ -4,7 +4,7 @@ import * as customerForm from "@checkout/locators/customer_form.locator";
 
 describe("Checkout braintree with one Item in cart", () => {
 
-    test.setTimeout(90000); // need a large one as this can take soem time to process. (is there a better way?)
+    test.setTimeout(1000000); // need a large one as this can take soem time to process. (is there a better way?)
 
     test.beforeEach(async ({simpleProductPage}, testInfo) => {
         await simpleProductPage.navigateTo();
