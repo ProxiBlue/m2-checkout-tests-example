@@ -342,7 +342,6 @@ describe("Tax Exempt Checkout Flow", () => {
         console.log(`Order placed: ${orderId!.trim()}`);
 
         // 12. Verify via REST API: customer account created, correct group, order on hold
-        const trimmedOrderId = orderId!.trim();
         const baseUrl = (process.env.url ?? '').replace(/\/$/, '');
         const adminUser = process.env.admin_username || 'admin';
         const adminPass = process.env.admin_password || '2RDMUjuGO7ojLYI%';
@@ -482,6 +481,336 @@ describe("Tax Exempt Checkout Flow", () => {
             body: await page.screenshot({ fullPage: true }),
             contentType: 'image/png',
         });
+    });
+
+    // @story: logged-in-exempt-checkout
+    test("logged-in Tax Exempt group customer: no checkbox, tax zero, order not holded, no cert notice", async ({
+        cartPage, checkoutPage, customerPage, simpleProductPage, customerData, page, browserName,
+    }, testInfo) => {
+        test.setTimeout(300000);
+        test.skip(browserName === 'webkit', 'Webkit clears shipping_method on tax-exempt save — covered by chromium');
+
+        const baseUrl = (process.env.url ?? '').replace(/\/$/, '');
+        // Integration token bypasses ReCaptcha for customer create (ValidationOverrider skips for USER_TYPE_INTEGRATION)
+        const integrationToken = process.env.playwright_integration_token || 'playwrightaccesstoken12345678900';
+
+        let customerId: number | undefined;
+
+        try {
+            // 1. Create Tax Exempt group customer (group_id=9) via integration token (bypasses ReCaptcha)
+            const createResp = await page.request.post(`${baseUrl}/rest/V1/customers`, {
+                data: {
+                    customer: {
+                        email: customerData.email,
+                        firstname: customerData.firstName,
+                        lastname: customerData.lastName,
+                        group_id: 9,
+                        website_id: 1,
+                    },
+                    password: customerData.password,
+                },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${integrationToken}` },
+            });
+            expect(createResp.ok(), `Customer create failed: ${createResp.status()} ${await createResp.text()}`).toBeTruthy();
+            const customer = await createResp.json();
+            customerId = customer.id;
+            expect(customerId, 'Customer ID must be returned by REST create').toBeTruthy();
+            console.log(`Created Tax Exempt customer id=${customerId} email=${customerData.email}`);
+
+            // 2. Login
+            await customerPage.login(customerData);
+
+            // 3. Re-add product after login (avoid PersistentCart merge fragility)
+            await simpleProductPage.navigateTo();
+            await simpleProductPage.addToCart();
+            await cartPage.navigateTo();
+            await cartPage.clickProceedToCheckout();
+            await checkoutPage.page.waitForLoadState('domcontentloaded');
+
+            // 4. Fill shipping form (no email field for logged-in users)
+            await checkoutPage.page.waitForSelector(checkoutLocators.shipping_label);
+            await checkoutPage.page.fill(customerForm.firstname, customerData.firstName);
+            await checkoutPage.page.fill(customerForm.lastname, customerData.lastName);
+            await checkoutPage.page.fill(customerForm.company, 'Tax Exempt Corp Group9');
+            await checkoutPage.page.fill(customerForm.street_address, customerData.street_one_line);
+            await checkoutPage.page.fill(customerForm.city, 'Burlington');
+            await checkoutPage.page.locator(customerForm.zip).pressSequentially('05401');
+            await checkoutPage.page.fill(customerForm.phone, customerData.phone);
+            await checkoutPage.page.selectOption(customerForm.state, '59'); // Vermont
+
+            // 5. Proceed to payment step
+            await checkoutPage.selectShippingMethod();
+            await page.waitForSelector(checkoutLocators.payment_group, { timeout: 15000 });
+            await page.locator('.loading-mask').waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {});
+
+            // 6. Verify tax exempt checkbox is NOT visible for group_id=9 (auto-exempt)
+            const taxExemptCheckbox = page.locator('#tax-exempt-requested');
+            await expect(taxExemptCheckbox).not.toBeVisible({ timeout: 5000 });
+
+            // 7. Verify tax is $0.00 or tax row absent
+            const taxRow = page.locator('.totals-tax .amount .price, .totals-tax-summary .amount .price').first();
+            const taxVisible = await taxRow.isVisible({ timeout: 5000 }).catch(() => false);
+            if (taxVisible) {
+                const taxAmount = await taxRow.textContent();
+                expect(taxAmount).toContain('$0.00');
+                console.log(`Tax for Tax Exempt group customer: ${taxAmount}`);
+            } else {
+                console.log('Tax row absent for Tax Exempt group customer — tax is $0');
+            }
+
+            // Capture payment step — no exempt checkbox, no tax
+            await testInfo.attach('payment-step-no-exempt-checkbox-group9', {
+                body: await page.screenshot({ fullPage: true }),
+                contentType: 'image/png',
+            });
+
+            // 8. Place order
+            await checkoutPage.selectPaymentmethodByName('Check / Money order');
+            await checkoutPage.actionPlaceOrder();
+
+            // 9. Verify success page
+            await Promise.race([
+                page.waitForURL(/\/checkout\/onepage\/success/, { timeout: 90000 }),
+                page.locator('.message-error:visible, .messages .error:visible').first()
+                    .waitFor({ state: 'visible', timeout: 90000 })
+                    .then(async () => {
+                        const errorText = await page.locator('.message-error:visible, .messages .error:visible').first().textContent();
+                        throw new Error(`Checkout error: ${errorText}`);
+                    }),
+            ]);
+            await page.waitForLoadState('domcontentloaded');
+            await page.waitForSelector('.checkout-success', { timeout: 30000 });
+
+            // 10. Verify no cert-upload notice on success page
+            const certNotice = page.locator('text=tax exemption');
+            const hasCertNotice = await certNotice.isVisible().catch(() => false);
+            expect(hasCertNotice, 'Tax Exempt group customer should NOT see cert-upload notice').toBeFalsy();
+
+            // Capture success page
+            await testInfo.attach('success-page-exempt-group-customer', {
+                body: await page.screenshot({ fullPage: true }),
+                contentType: 'image/png',
+            });
+
+            // 11. Get order ID and verify state via REST API
+            // Use .checkout-success a strong to target the order number link (not Continue Shopping span)
+            const orderIdElement = page.locator('.checkout-success a strong, div.checkout-success span a').first();
+            const orderId = await orderIdElement.textContent();
+            expect(orderId).toBeTruthy();
+            const trimmedOrderId = orderId!.trim();
+            console.log(`Tax Exempt group order placed: ${trimmedOrderId}`);
+
+            const orderSearchUrl = `${baseUrl}/rest/V1/orders?searchCriteria[filterGroups][0][filters][0][field]=increment_id&searchCriteria[filterGroups][0][filters][0][value]=${trimmedOrderId}`;
+            const orderResp = await page.request.get(orderSearchUrl, {
+                headers: { Authorization: `Bearer ${integrationToken}` },
+            });
+            const orderData = await orderResp.json();
+            expect(orderData.items.length).toBeGreaterThan(0);
+            const orderState = orderData.items[0].state;
+            console.log(`Tax Exempt group order state: ${orderState}`);
+            expect(orderState).not.toBe('holded');
+
+            // 12. Verify customer still in group_id=9 (not demoted)
+            const custSearchUrl = `${baseUrl}/rest/V1/customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]=${encodeURIComponent(customerData.email)}`;
+            const custResp = await page.request.get(custSearchUrl, {
+                headers: { Authorization: `Bearer ${integrationToken}` },
+            });
+            const custData = await custResp.json();
+            expect(custData.items.length).toBeGreaterThan(0);
+            const groupId = custData.items[0].group_id;
+            console.log(`Customer group after order: ${groupId}`);
+            expect(groupId).toBe(9);
+        } finally {
+            // Cleanup: delete test customer via integration token (bypasses ReCaptcha ACL)
+            if (customerId) {
+                await page.request.delete(`${baseUrl}/rest/V1/customers/${customerId}`, {
+                    headers: { Authorization: `Bearer ${integrationToken}` },
+                });
+                console.log(`Cleaned up customer id=${customerId}`);
+            }
+        }
+    });
+
+    // @story: logged-in-nonexempt-checkbox-visible
+    test("logged-in non-exempt customer with company sees tax exempt checkbox", async ({
+        cartPage, checkoutPage, customerPage, simpleProductPage, customerData, page, browserName,
+    }, testInfo) => {
+        test.setTimeout(300000);
+        test.skip(browserName === 'webkit', 'Webkit clears shipping_method on tax-exempt save — covered by chromium');
+
+        const baseUrl = (process.env.url ?? '').replace(/\/$/, '');
+        // Integration token bypasses ReCaptcha for customer create (ValidationOverrider skips for USER_TYPE_INTEGRATION)
+        const integrationToken = process.env.playwright_integration_token || 'playwrightaccesstoken12345678900';
+
+        let customerId: number | undefined;
+
+        try {
+            // 1. Create General group customer (group_id=1) via integration token (bypasses ReCaptcha)
+            const createResp = await page.request.post(`${baseUrl}/rest/V1/customers`, {
+                data: {
+                    customer: {
+                        email: customerData.email,
+                        firstname: customerData.firstName,
+                        lastname: customerData.lastName,
+                        group_id: 1,
+                        website_id: 1,
+                    },
+                    password: customerData.password,
+                },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${integrationToken}` },
+            });
+            expect(createResp.ok(), `Customer create failed: ${createResp.status()} ${await createResp.text()}`).toBeTruthy();
+            const customer = await createResp.json();
+            customerId = customer.id;
+            expect(customerId, 'Customer ID must be returned by REST create').toBeTruthy();
+            console.log(`Created General group customer id=${customerId} email=${customerData.email}`);
+
+            // 2. Login
+            await customerPage.login(customerData);
+
+            // 3. Re-add product after login
+            await simpleProductPage.navigateTo();
+            await simpleProductPage.addToCart();
+            await cartPage.navigateTo();
+            await cartPage.clickProceedToCheckout();
+            await checkoutPage.page.waitForLoadState('domcontentloaded');
+
+            // 4. Fill shipping form WITH company name (required for checkbox to appear)
+            await checkoutPage.page.waitForSelector(checkoutLocators.shipping_label);
+            await checkoutPage.page.fill(customerForm.firstname, customerData.firstName);
+            await checkoutPage.page.fill(customerForm.lastname, customerData.lastName);
+            await checkoutPage.page.fill(customerForm.company, 'Non-Exempt Test Corp');
+            await checkoutPage.page.fill(customerForm.street_address, customerData.street_one_line);
+            await checkoutPage.page.fill(customerForm.city, 'Burlington');
+            await checkoutPage.page.locator(customerForm.zip).pressSequentially('05401');
+            await checkoutPage.page.fill(customerForm.phone, customerData.phone);
+            await checkoutPage.page.selectOption(customerForm.state, '59'); // Vermont
+
+            // 5. Proceed to payment step
+            await checkoutPage.selectShippingMethod();
+            await page.waitForSelector(checkoutLocators.payment_group, { timeout: 15000 });
+            await page.locator('.loading-mask').waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {});
+
+            // 6. Verify tax exempt checkbox IS visible for General group customer with company
+            const taxExemptCheckbox = page.locator('#tax-exempt-requested');
+            await expect(taxExemptCheckbox).toBeVisible({ timeout: 15000 });
+
+            // Capture payment step with visible checkbox
+            await testInfo.attach('payment-step-checkbox-visible-nonexempt-loggedin', {
+                body: await page.screenshot({ fullPage: true }),
+                contentType: 'image/png',
+            });
+        } finally {
+            // Cleanup: delete test customer via integration token (bypasses ReCaptcha ACL)
+            if (customerId) {
+                await page.request.delete(`${baseUrl}/rest/V1/customers/${customerId}`, {
+                    headers: { Authorization: `Bearer ${integrationToken}` },
+                });
+                console.log(`Cleaned up customer id=${customerId}`);
+            }
+        }
+    });
+
+    // @story: nonexempt-no-checkbox-order-not-holded
+    test("non-exempt customer who does not check tax exempt gets normal tax on order", async ({
+        cartPage, checkoutPage, customerData, page,
+    }, testInfo) => {
+        test.setTimeout(300000);
+        // Guest checkout test — no login, no admin customer creation needed.
+        // Company name filled so checkbox appears, but it is NOT checked.
+
+        // 1. Navigate to cart and proceed to checkout
+        await cartPage.navigateTo();
+        await cartPage.clickProceedToCheckout();
+        await checkoutPage.page.waitForLoadState('domcontentloaded');
+
+        // 2. Fill in email
+        await checkoutPage.page.fill(customerForm.email, customerData.email);
+        await checkoutPage.page.waitForLoadState('domcontentloaded');
+
+        // 3. Fill shipping form WITH company name (so checkbox renders) but do NOT check it
+        await checkoutPage.page.waitForSelector(checkoutLocators.shipping_label);
+        await checkoutPage.page.fill(customerForm.firstname, customerData.firstName);
+        await checkoutPage.page.fill(customerForm.lastname, customerData.lastName);
+        await checkoutPage.page.fill(customerForm.company, 'Normal Tax Corp');
+        await checkoutPage.page.fill(customerForm.street_address, customerData.street_one_line);
+        await checkoutPage.page.fill(customerForm.city, 'Burlington');
+        await checkoutPage.page.locator(customerForm.zip).pressSequentially('05401');
+        await checkoutPage.page.fill(customerForm.phone, customerData.phone);
+        await checkoutPage.page.selectOption(customerForm.state, '59'); // Vermont
+
+        // 4. Select shipping method and proceed to payment step
+        await checkoutPage.selectShippingMethod();
+        await page.waitForSelector(checkoutLocators.payment_group, { timeout: 15000 });
+        await page.locator('.loading-mask').waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {});
+
+        // 5. Verify tax exempt checkbox is visible (company name present)
+        const taxExemptCheckbox = page.locator('#tax-exempt-requested');
+        await expect(taxExemptCheckbox).toBeVisible({ timeout: 15000 });
+        // Do NOT check it
+
+        // 6. Verify tax is non-zero (normal tax applies when checkbox unchecked)
+        const taxRow = page.locator('.totals-tax .amount .price, .totals-tax-summary .amount .price').first();
+        const taxVisible = await taxRow.isVisible({ timeout: 5000 }).catch(() => false);
+        if (taxVisible) {
+            const taxAmount = await taxRow.textContent();
+            expect(taxAmount).not.toContain('$0.00');
+            console.log(`Normal tax amount (checkbox unchecked): ${taxAmount}`);
+        } else {
+            console.log('Tax row not visible — may be a $0 tax jurisdiction; continuing with order placement');
+        }
+
+        // Capture payment step with checkbox visible but unchecked
+        await testInfo.attach('payment-step-normal-tax-exempt-unchecked', {
+            body: await page.screenshot({ fullPage: true }),
+            contentType: 'image/png',
+        });
+
+        // 7. Place order without checking tax exempt
+        await checkoutPage.selectPaymentmethodByName('Check / Money order');
+        await checkoutPage.actionPlaceOrder();
+
+        // 8. Verify success page
+        await Promise.race([
+            page.waitForURL(/\/checkout\/onepage\/success/, { timeout: 90000 }),
+            page.locator('.message-error:visible, .messages .error:visible').first()
+                .waitFor({ state: 'visible', timeout: 90000 })
+                .then(async () => {
+                    const errorText = await page.locator('.message-error:visible, .messages .error:visible').first().textContent();
+                    throw new Error(`Checkout error: ${errorText}`);
+                }),
+        ]);
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForSelector('.checkout-success', { timeout: 30000 });
+
+        // Capture success page
+        await testInfo.attach('success-page-normal-tax-order', {
+            body: await page.screenshot({ fullPage: true }),
+            contentType: 'image/png',
+        });
+
+        // 9. Get order ID and verify state via REST API — should NOT be holded
+        // Guest success page: "Your order # is: P12345." — extract increment_id from text
+        const successText = await page.locator('.checkout-success').first().textContent();
+        const orderMatch = (successText || '').match(/(?:Your order (?:#|number) is:?\s*)([A-Z0-9]+)/i);
+        const trimmedOrderId = orderMatch ? orderMatch[1].trim() : '';
+        expect(trimmedOrderId, 'Could not extract order ID from success page').toBeTruthy();
+        console.log(`Normal tax order placed: ${trimmedOrderId}`);
+
+        const baseUrl = (process.env.url ?? '').replace(/\/$/, '');
+        // Integration token bypasses ReCaptcha and has full API access
+        const integrationToken = process.env.playwright_integration_token || 'playwrightaccesstoken12345678900';
+
+        const orderSearchUrl = `${baseUrl}/rest/V1/orders?searchCriteria[filterGroups][0][filters][0][field]=increment_id&searchCriteria[filterGroups][0][filters][0][value]=${trimmedOrderId}`;
+        const orderResp = await page.request.get(orderSearchUrl, {
+            headers: { Authorization: `Bearer ${integrationToken}` },
+        });
+        const orderData = await orderResp.json();
+        expect(orderData.items.length).toBeGreaterThan(0);
+        const orderState = orderData.items[0].state;
+        console.log(`Normal tax order state: ${orderState}`);
+        expect(orderState).not.toBe('holded');
+        console.log(`Order ${trimmedOrderId} correctly not holded: state=${orderState}`);
     });
 
     // @story: exempt-checkbox-hidden-without-company
