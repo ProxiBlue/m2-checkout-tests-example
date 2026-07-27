@@ -1,0 +1,15 @@
+{
+  "company_name": "Loki Test Corp",
+  "vermont_address": {
+    "state_id": 59,
+    "state_code": "VT",
+    "state_label": "Vermont",
+    "zip": "05401",
+    "city": "Burlington"
+  },
+  "group_ids": {
+    "general": 1,
+    "tax_exempt": 9,
+    "need_tax_cert": 10
+  }
+}

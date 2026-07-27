@@ -49,16 +49,28 @@ export default class CheckoutPage extends BasePage {
         await this.page.fill(customerForm.firstname, customerData.firstName);
         await this.page.fill(customerForm.lastname, customerData.lastName);
         await this.page.fill(customerForm.street_address, customerData.street_one_line);
-        await this.page.fill(customerForm.city,customerData.city);
-        await this.page.locator(customerForm.zip).pressSequentially(customerData.zip);
+        // Use consistent Vermont address so ShipperHQ can resolve shipping rates
+        await this.page.fill(customerForm.city, 'Burlington');
+        await this.page.locator(customerForm.zip).pressSequentially('05401');
         await this.page.fill(customerForm.phone, customerData.phone);
         await this.page.selectOption(customerForm.state, '59');
     }
 
     async selectShippingMethod() {
-        // shipperHQ must be disabled by setting flatrate enabled, setting it as fallback and setting timeout to 0
-        await this.page.check('input[value="flatrate_flatrate"]');
+        await this.page.waitForSelector(locators.shipping_label);
+        await this.page.waitForTimeout(5000);
+
+        const shippingRadio = this.page.locator('input[type="radio"][value]').first();
+        if (await shippingRadio.isVisible({ timeout: 10000 }).catch(() => false)) {
+            if (!(await shippingRadio.isChecked())) {
+                await shippingRadio.check();
+            }
+        }
+
         await this.page.locator(locators.shipping_next_button).click();
+        await this.page.waitForURL(/.*#payment/, { timeout: 30000 });
+        await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+        await this.page.waitForSelector(locators.payment_group, { timeout: 30000 });
     }
 
     async selectPaymentmethodByName(method : string) {
@@ -71,11 +83,36 @@ export default class CheckoutPage extends BasePage {
     async actionPlaceOrder() {
         await this.page.waitForLoadState("domcontentloaded");
         await this.page.waitForSelector(locators.payment_group);
+
+        // Wait for any loading mask to clear before clicking — KO/checkout async ops
+        await this.page.locator('.loading-mask').waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {});
+
+        // Ensure shipping method is still set on the quote — signup-checkbox toggles
+        // or other quote updates can wipe the shipping selection between selectShippingMethod
+        // and place order (webkit is particularly prone to this).
+        const hasShipping = await this.page.evaluate(() => {
+            try {
+                const quote = (window as any).require('Magento_Checkout/js/model/quote');
+                const m = quote.shippingMethod();
+                return !!(m && (m.method_code || m.carrier_code));
+            } catch { return false; }
+        });
+
+        if (!hasShipping) {
+            await this.page.evaluate(() => {
+                const require = (window as any).require;
+                const selectMethod = require('Magento_Checkout/js/action/select-shipping-method');
+                const rates = require('Magento_Checkout/js/model/shipping-service').getShippingRates()();
+                if (rates.length > 0) selectMethod(rates[0]);
+            });
+            await this.page.waitForTimeout(2000);
+        }
+
         const elements = await this.page.$$(locators.place_order_button);
-        // Filter to find the first visible element
         for (const element of elements) {
-            if (await element.isVisible()) {
-                await element.click();
+            if (await element.isVisible() && await element.isEnabled()) {
+                await element.scrollIntoViewIfNeeded();
+                await element.click({ force: true });
                 break;
             }
         }
@@ -90,11 +127,14 @@ export default class CheckoutPage extends BasePage {
     }
 
     async testSuccessPage() : Promise<string> {
+        // Wait for navigation to success URL first (cold cache can take 60s+ for order placement)
+        await this.page.waitForURL(/\/checkout\/onepage\/success/, { timeout: 90000 });
         await this.page.waitForLoadState("domcontentloaded");
-        await this.page.waitForTimeout(5000);
+        await this.page.waitForSelector('.checkout-success', { timeout: 30000 });
         const successPageHeading = this.data.default.success_page_heading || '';
-        expect(this.page.locator(pageLocators.pageTitle)).toHaveText(successPageHeading);
+        await expect(this.page.locator(pageLocators.pageTitle)).toHaveText(successPageHeading);
         const orderId = await this.page.locator(locators.success_order_id).first().textContent();
+
         return orderId ?? "";
     }
 

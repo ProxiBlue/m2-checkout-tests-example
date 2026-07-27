@@ -1,0 +1,23 @@
+{
+  "customer": {
+    "email": "checkout-test-existing@example.com",
+    "password": "TestPass123!",
+    "firstName": "Test",
+    "lastName": "McTesterson"
+  },
+  "address": {
+    "firstName": "Test",
+    "lastName": "McTesterson",
+    "street": "123 Main Street",
+    "city": "Addison",
+    "state": "Texas",
+    "zip": "75001",
+    "phone": "5125550100"
+  },
+  "product": {
+    "sku": "402-249",
+    "url": "2-x-1-tee-sxt-402-249.html",
+    "qty": 10
+  },
+  "payment_method": "checkmo"
+}

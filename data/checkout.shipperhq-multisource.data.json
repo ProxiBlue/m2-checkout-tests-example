@@ -1,0 +1,16 @@
+{
+  "products": [
+    { "entity_id": "7330",  "sku": "H0400100PW1000", "qty": "1",   "url": "1-x-10-schedule-40-pvc-pipe-h0400100pw1000.html" },
+    { "entity_id": "20176", "sku": "156-125",         "qty": "100", "url": "1-1-4-pvc-to-cast-iron-to-cast-iron-epdm-flex-coupling.html" }
+  ],
+  "address": {
+    "email":     "shq-test@example.com",
+    "firstName": "Test",
+    "lastName":  "Multisource",
+    "street":    "123 Main St",
+    "city":      "Beverly Hills",
+    "state":     "California",
+    "zip":       "90210",
+    "phone":     "8067220086"
+  }
+}
