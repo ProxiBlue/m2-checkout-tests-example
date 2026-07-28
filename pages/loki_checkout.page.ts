@@ -238,7 +238,33 @@ export default class LokiCheckoutPage extends BasePage {
             this.workerInfo.project.name + ": Fill Stripe test card",
             async () => {
                 await this.page.locator(locators.stripe_radio).check();
-                await this.page.waitForSelector(locators.stripe_iframe, { state: "visible", timeout: 20000 });
+
+                try {
+                    await this.page.waitForSelector(locators.stripe_iframe, { state: "visible", timeout: 20000 });
+                } catch (e) {
+                    // Morph-churn before the radio click can leave the payment
+                    // section with dead bindings so Elements never mounts (the
+                    // #351 iframe intermittency — same class as the #413 PO
+                    // morph bug). Recovery: force a payment-methods re-render
+                    // via the Alpine store (fresh markup = fresh mount), the
+                    // same mechanism selectFreePaymentMethod uses, then wait
+                    // again. Mirrors a user clicking another method and back.
+                    await this.page.evaluate(async () => {
+                        const store = (window as any).Alpine?.store?.('LokiCheckout');
+                        const comp = store?.getComponentByName?.('LokiCheckoutPaymentMethods')
+                            || store?.getComponentArray?.().find((c: any) =>
+                                c.name === 'LokiCheckoutPaymentMethods' || c.name?.includes('PaymentMethods'));
+                        if (!comp) return;
+                        if (!comp.blockId) comp.blockId = 'loki-checkout.payment.methods';
+                        const orig = comp.skipQueue;
+                        comp.skipQueue = true;
+                        comp.value = '';
+                        comp.value = 'stripe_payments';
+                        await comp.submit?.();
+                        comp.skipQueue = orig;
+                    });
+                    await this.page.waitForSelector(locators.stripe_iframe, { state: "visible", timeout: 30000 });
+                }
                 await this.page.waitForTimeout(2000);
 
                 const stripeFrame = this.page.frameLocator(locators.stripe_iframe);
