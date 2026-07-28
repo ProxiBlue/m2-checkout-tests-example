@@ -1,4 +1,4 @@
-import { test, describe, expect } from "../fixtures";
+import { test, describe, expect } from "../../fixtures";
 
 /**
  * Loki Checkout + Stripe — multi-source shipment end-to-end test.
