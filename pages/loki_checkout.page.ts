@@ -422,10 +422,23 @@ export default class LokiCheckoutPage extends BasePage {
         await test.step(
             this.workerInfo.project.name + ": Uncheck signup checkbox",
             async () => {
+                // A loki morph landing right after the uncheck can restore the
+                // server-side checked state (uncheck AJAX vs email/address AJAX
+                // race). Retry until the uncheck sticks across a settle window.
                 const checkbox = this.page.locator(locators.signup_checkbox);
-                await checkbox.uncheck();
+
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                    if (await checkbox.isChecked()) {
+                        await checkbox.uncheck();
+                    }
+                    await this.page.waitForTimeout(2000);
+
+                    if (!(await checkbox.isChecked())) {
+                        return;
+                    }
+                }
+
                 await expect(checkbox).not.toBeChecked();
-                await this.page.waitForTimeout(2000);
             }
         );
     }
