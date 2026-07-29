@@ -282,6 +282,21 @@ export default class LokiCheckoutPage extends BasePage {
                 await cvc.click();
                 await cvc.fill("123");
                 await cvc.press("Tab");
+
+                // Stripe Link intermittently pre-checks "Save my information for
+                // faster checkout" for fresh emails; when checked, the Payment
+                // Element demands a mobile number before reporting complete and
+                // PAY NOW never enables. Untick it — Link enrollment is never
+                // wanted in tests.
+                const linkSave = stripeFrame
+                    .getByRole('checkbox', { name: /save my information/i })
+                    .first();
+                if (await linkSave.isVisible({ timeout: 2000 }).catch(() => false)) {
+                    if (await linkSave.isChecked().catch(() => false)) {
+                        await linkSave.uncheck().catch(() => {});
+                    }
+                }
+
                 await this.page.waitForTimeout(3000);
             }
         );
