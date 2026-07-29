@@ -70,8 +70,7 @@ describe("Loki Checkout — account creation checkbox", () => {
         await expect(checkbox).not.toBeVisible({ timeout: 10000 });
     });
 
-    // TODO: Requires Stripe test mode — PAY NOW button not enabling in current env
-    test.fixme("account is created after order placement when checked", async ({
+    test("account is created after order placement when checked", async ({
         lokiCheckoutPage,
         customerData,
     }) => {
@@ -98,8 +97,7 @@ describe("Loki Checkout — account creation checkbox", () => {
         expect(postCheck).toBe(false); // false = email taken = account created
     });
 
-    // TODO: Requires Stripe test mode — PAY NOW button not enabling in current env
-    test.fixme("account is NOT created when checkbox is unchecked", async ({
+    test("account is NOT created when checkbox is unchecked", async ({
         lokiCheckoutPage,
         customerData,
     }) => {
