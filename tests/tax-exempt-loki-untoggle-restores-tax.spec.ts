@@ -164,14 +164,53 @@ describe("Loki Tax Exempt Untoggle Restores Tax", () => {
     }) => {
         await fillCheckoutUpToExemptCheckbox(lokiCheckoutPage, customerData, page);
 
-        // Capture original tax — exact string for strict comparison later
-        const originalTax = await lokiCheckoutPage.getSidebarTaxValue();
+        // AvaTax warmup — the post-fill sidebar first shows Magento's
+        // fallback state-only rate (e.g. $8.40 for Vermont 6%), and only a
+        // request that clears+recomputes tax fully engages AvaTax's
+        // full-jurisdiction lookup (e.g. $9.45 for Burlington 6% + local
+        // option). A passive nudge is not enough — only the tax_exempt
+        // toggle round-trip triggers the real AvaTax call. Do a throwaway
+        // tick+untick cycle first so the sidebar settles on the real
+        // jurisdiction rate BEFORE capturing the baseline; otherwise
+        // originalTax is the stale fallback and the real post-untick rate
+        // will never match it on the first (cold-AvaTax) attempt.
+        const warmupTickAjaxDone = lokiCheckoutPage.waitForLokiComponentsResponse(15000);
+        await lokiCheckoutPage.tickTaxExempt();
+        await warmupTickAjaxDone;
+        await lokiCheckoutPage.nudgeLokiAjax();
 
-        // --- Tick exempt ---
-        // Register listener BEFORE clicking; wait for first AJAX; then nudge a
-        // second AJAX to guarantee the sidebar re-renders with $0.00.
-        // (First response may carry stale totals due to PHP static-cache race;
-        //  second AJAX loads fresh from DB with the flag set.)
+        await expect.poll(
+            () => lokiCheckoutPage.getSidebarTaxValue(),
+            { timeout: 60000, intervals: [500, 1000, 2000, 3000] },
+        ).toBe('$0.00');
+
+        const warmupUntickAjaxDone = lokiCheckoutPage.waitForLokiComponentsResponse(15000);
+        await lokiCheckoutPage.untickTaxExempt();
+        await warmupUntickAjaxDone;
+        await lokiCheckoutPage.nudgeLokiAjax();
+
+        // Poll for a non-zero, stable value (two consecutive identical
+        // samples) so the baseline is the fully-settled jurisdiction rate.
+        let stableTax = '';
+        let lastSample = '';
+        await expect.poll(
+            async () => {
+                const current = await lokiCheckoutPage.getSidebarTaxValue();
+                const isStable = current !== '' && current !== '$0.00' && current === lastSample;
+                lastSample = current;
+                if (isStable) {
+                    stableTax = current;
+                }
+                return isStable;
+            },
+            { timeout: 30000, intervals: [1000, 2000, 3000] },
+        ).toBe(true);
+
+        const originalTax = stableTax;
+
+        // --- Real tick exempt ---
+        // Register listener BEFORE clicking; wait for first AJAX; then nudge
+        // a second AJAX to guarantee the sidebar re-renders with $0.00.
         const tickAjaxDone = lokiCheckoutPage.waitForLokiComponentsResponse(15000);
         await lokiCheckoutPage.tickTaxExempt();
         await tickAjaxDone;
@@ -182,9 +221,7 @@ describe("Loki Tax Exempt Untoggle Restores Tax", () => {
             { timeout: 60000, intervals: [500, 1000, 2000, 3000] },
         ).toBe('$0.00');
 
-        // --- Untick exempt ---
-        // Same pattern: register listener BEFORE clicking; wait for first AJAX;
-        // nudge a second AJAX; then poll for the restored tax value.
+        // --- Real untick exempt ---
         const untickAjaxDone = lokiCheckoutPage.waitForLokiComponentsResponse(15000);
         await lokiCheckoutPage.untickTaxExempt();
         await untickAjaxDone;

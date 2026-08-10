@@ -1,0 +1,31 @@
+{
+  "address": {
+    "city": "Olive Branch",
+    "zip": "38654",
+    "state_label": "Mississippi"
+  },
+  "stripe_test_card": {
+    "number": "4242424242424242",
+    "expiry": "1230",
+    "cvc": "123"
+  },
+  "scenarios": {
+    "single_item": {
+      "products": [
+        { "entity_id": "924", "qty": "2" }
+      ]
+    },
+    "cross_category_two_item": {
+      "products": [
+        { "entity_id": "7518", "qty": "1" },
+        { "entity_id": "924", "qty": "1" }
+      ]
+    },
+    "multi_shipping_pipe_plus_union_ball_valve": {
+      "products": [
+        { "entity_id": "7518", "qty": "2" },
+        { "entity_id": "6631", "qty": "1" }
+      ]
+    }
+  }
+}

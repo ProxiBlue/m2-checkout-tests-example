@@ -2,6 +2,7 @@ import { test as baseTest } from "@common/fixtures";
 import SimpleProductPage from "@hyva/pages/simple_product.page";
 import checkoutPage from "@checkout/pages/checkout.page";
 import LokiCheckoutPage from "@checkout/pages/loki_checkout.page";
+import CheckoutStripeSaveCardPage from "@checkout/pages/checkoutStripeSaveCard.page";
 import CartPage from "@hyva/pages/cart.page";
 import AdminPage from '@admin/pages/admin.page';
 import AdminOrdersPage from "@admin/pages/orders.page";
@@ -11,6 +12,7 @@ import CustomerPage from "@hyva/pages/customer.page";
 type pages = {
     checkoutPage: checkoutPage;
     lokiCheckoutPage: LokiCheckoutPage;
+    checkoutStripeSaveCardPage: CheckoutStripeSaveCardPage;
     simpleProductPage: SimpleProductPage;
     cartPage: CartPage;
     adminPage: AdminPage;
@@ -25,6 +27,9 @@ const testPages = baseTest.extend<pages>({
     },
     lokiCheckoutPage: async ({ page }, use, workerInfo) => {
         await use(new LokiCheckoutPage(page, workerInfo));
+    },
+    checkoutStripeSaveCardPage: async ({ page }, use, workerInfo) => {
+        await use(new CheckoutStripeSaveCardPage(page, workerInfo));
     },
     simpleProductPage: async ({ page }, use, workerInfo) => {
         await use(new SimpleProductPage(page, workerInfo));

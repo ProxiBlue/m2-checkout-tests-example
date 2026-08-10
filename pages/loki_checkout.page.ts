@@ -1,5 +1,5 @@
 import BasePage from "@common/pages/base.page";
-import { Page, Response, TestInfo, expect, test } from "@playwright/test";
+import { Locator, Page, Response, Route, TestInfo, expect, test } from "@playwright/test";
 import * as locators from "../locators/loki_checkout.locator";
 import { CustomerData } from '@common/interfaces/CustomerData';
 import { loadJsonData } from "@utils/functions/file";
@@ -19,10 +19,41 @@ if (data && !data.default) {
     data = { default: data as any };
 }
 
+/**
+ * LokiAjaxQueue's single POST endpoint (vendor/loki/magento2-components
+ * Util/ComponentUtil::getPostUrl() -> 'loki_components/index/html') — every
+ * component post (field saves, shipping-method selection, and the Pay Now
+ * step-forward submit) goes through this one URL. Task 003's route mocks
+ * MUST be installed only immediately before the action under test (never
+ * for the checkout-fill steps that precede it) or they will also intercept
+ * — and break — the real address/shipping AJAX the fill helpers depend on.
+ *
+ * Deviation from the task brief's suggested `**\/loki-checkout/**` pattern
+ * (that path does not exist on this endpoint — confirmed by reading
+ * ComponentUtil::getPostUrl() directly) — corrected to the real endpoint.
+ */
+const LOKI_COMPONENTS_POST_ENDPOINT_PATTERN = /loki_components\/index\/html/i;
+
 export default class LokiCheckoutPage extends BasePage {
+
+    /**
+     * Counts `loki_components/index/html` POSTs intercepted by
+     * `mockPayNowAjaxSilentNoAdvance` since it was installed. Lets a test
+     * assert that a forced second Pay Now click during processing did NOT
+     * start a second post/morph cycle — the actual reproduction shape of
+     * the #419 double-charge race (a duplicate POST reaching a since-emptied
+     * cart), which a `disabled`-attribute or overlay-visibility assertion
+     * alone cannot prove either way.
+     */
+    private payNowPostCount = 0;
 
     constructor(public page: Page, public workerInfo: TestInfo) {
         super(page, workerInfo, data, locators);
+    }
+
+    /** Number of Pay Now POSTs intercepted since `mockPayNowAjaxSilentNoAdvance` was installed. */
+    getPayNowPostCount(): number {
+        return this.payNowPostCount;
     }
 
     async navigateTo() {
@@ -1106,5 +1137,233 @@ export default class LokiCheckoutPage extends BasePage {
                 }
             }
         );
+    }
+
+    // -------------------------------------------------------------------
+    // Pay Now guard / overlay / silent-error toast (GH #419 — task 003)
+    // -------------------------------------------------------------------
+
+    /**
+     * Intercepts the next Pay Now post(s) with a 4xx/5xx response — task
+     * 001's afterPostFinally() releases loading via the queue's `.catch()`
+     * path (which also adds a Message-store error, so #393's silent-error
+     * toast correctly does NOT fire here — that path is distinguished by
+     * `hasMessages`). Optional `delayMs` widens the mid-flight assertion
+     * window for tests that need to observe the overlay/disabled state
+     * before the response lands.
+     */
+    async mockPayNowAjaxError(status = 500, delayMs = 0): Promise<void> {
+        await this.page.route(LOKI_COMPONENTS_POST_ENDPOINT_PATTERN, async (route: Route) => {
+            if (route.request().method() !== 'POST') {
+                await route.continue();
+                return;
+            }
+
+            if (delayMs > 0) {
+                await new Promise((resolve) => setTimeout(resolve, delayMs));
+            }
+
+            await route.fulfill({ status, contentType: 'application/json', body: '{}' });
+        });
+    }
+
+    /**
+     * Intercepts the next Pay Now post(s) with a 200 JSON body carrying
+     * neither `error` nor `redirect` — LokiAjaxQueue.handleJson() then does
+     * nothing at all (no morph, no message), which is exactly the #393
+     * "no step advance and no messages" shape task 001's handleAjaxDone()
+     * detects and turns into the `loki-checkout.error.silent` toast.
+     *
+     * IMPORTANT (investigation finding): this only intercepts a Pay Now
+     * submit whose FINAL step actually posts to `loki_components/index/html`
+     * — true for `checkmo`/free payment methods. It is NOT true for Stripe:
+     * `LokiCheckout\Stripe\Component\Elements\ElementsViewModel::getReturnUrl()`
+     * points `stripe.confirmPayment()`'s `return_url` at
+     * `loki_checkout/index/finalize` — a SEPARATE controller reached via a
+     * full browser navigation driven by Stripe.js itself, not through
+     * LokiAjaxQueue at all. Confirmed via `bin/magento dev:di:info`-style
+     * runtime tracing (route-interception canaries proved `page.route()` on
+     * this pattern reliably intercepts every `loki_components/index/html`
+     * POST — including ones fired by directly invoking
+     * `LokiCheckoutStepForwardButton.submit()` in-page — right up until the
+     * real Stripe-confirmed submit, whose navigation target was
+     * `loki_checkout/index/finalize`, never `loki_components/index/html`).
+     * Callers that need to force this path MUST select a non-Stripe payment
+     * method (`selectFreePaymentMethod('checkmo')`) before calling Pay Now.
+     */
+    async mockPayNowAjaxSilentNoAdvance(delayMs = 0): Promise<void> {
+        this.payNowPostCount = 0;
+
+        await this.page.route(LOKI_COMPONENTS_POST_ENDPOINT_PATTERN, async (route: Route) => {
+            if (route.request().method() !== 'POST') {
+                await route.continue();
+                return;
+            }
+
+            // Count the POST as soon as it's intercepted, not after the delay
+            // resolves — a caller's forced-second-click assertion cares
+            // whether a second POST was SENT, not whether it finished.
+            this.payNowPostCount += 1;
+
+            if (delayMs > 0) {
+                await new Promise((resolve) => setTimeout(resolve, delayMs));
+            }
+
+            await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+        });
+    }
+
+    /**
+     * Intercepts the next Pay Now post(s) with a 200 response whose body is
+     * NOT valid JSON — LokiAjaxQueue's `JSON.parse` throw routes it down the
+     * real `updateTargetsAfterPost(requests, html)` branch (the genuine
+     * "morph" code path), not the `handleJson()` short-circuit. None of the
+     * probe markup's ids match live target ids, so the morph loop safely
+     * no-ops on every target — this exercises the morph code path itself
+     * (and the delay window around it) without needing to fabricate real
+     * target markup.
+     */
+    async mockPayNowAjaxDelayedMorph(delayMs: number): Promise<void> {
+        await this.page.route(LOKI_COMPONENTS_POST_ENDPOINT_PATTERN, async (route: Route) => {
+            if (route.request().method() !== 'POST') {
+                await route.continue();
+                return;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+            await route.fulfill({
+                status: 200,
+                contentType: 'text/html',
+                body: '<div id="uptactics-pay-now-guard-morph-probe">morph-cycle-fired</div>',
+            });
+        });
+    }
+
+    /** Removes any Pay Now AJAX mock installed by the methods above. */
+    async unmockPayNowAjax(): Promise<void> {
+        await this.page.unroute(LOKI_COMPONENTS_POST_ENDPOINT_PATTERN);
+    }
+
+    /**
+     * The PAY NOW button — same text-based locator already proven by
+     * placeOrder() / placeOrderAndNavigateToSuccess() / clickPayNow().
+     * `.first()` guards against strict-mode violations if the label ever
+     * matches more than one element.
+     */
+    getPayNowButton(): Locator {
+        return this.page.locator(locators.pay_now_button).first();
+    }
+
+    /**
+     * True while the button carries the real HTML `disabled` attribute —
+     * bound to Alpine `:disabled="disabled"` in Loki_FieldComponents'
+     * button.phtml, itself driven by LokiCheckoutStepForwardButton's
+     * `loading` watcher (task 001's setLoading()). Native `disabled` is what
+     * actually blocks a real user click (and what Playwright's own
+     * actionability check honours without `force: true`).
+     */
+    async isPayNowDisabled(): Promise<boolean> {
+        return await this.getPayNowButton().isDisabled();
+    }
+
+    /**
+     * True when the loader-overlay's own `x-show="showLoader"` element is
+     * visible — i.e. `Alpine.store('UptacticsSubmitGuard').isPlacingOrder`
+     * is true (task 001 setLoading() mirror, task 002 overlay wrapper).
+     * Checks the INNER `[aria-busy]` element, not the always-present
+     * `#uptactics-pay-now-overlay` x-data wrapper.
+     */
+    async isLoaderOverlayVisible(): Promise<boolean> {
+        return await this.page
+            .locator(locators.pay_now_overlay_loader)
+            .isVisible({ timeout: 3000 })
+            .catch(() => false);
+    }
+
+    /**
+     * How many `#uptactics-pay-now-overlay` anchors exist in the DOM —
+     * expected to stay exactly 1 across a Loki AJAX morph. Guards against
+     * the layout-handle double-merge class of incident (graphiti
+     * [a9e1d455]/[292da163]) that task 002's Implementation Notes cite as
+     * the reason the overlay is anchored in `before.body.end` rather than
+     * inside the morphed `#loki-checkout` subtree.
+     */
+    async countPayNowOverlayAnchors(): Promise<number> {
+        return await this.page.locator(locators.pay_now_overlay_anchor).count();
+    }
+
+    /**
+     * Waits for the Pay Now post/morph cycle to fully finish — polls the
+     * loader-overlay back to hidden (i.e. `setLoading(false)` has run,
+     * whichever path got there: success, 4xx/5xx, thrown exception, or the
+     * #393 no-advance/no-message silent-error path). Poll-based rather than
+     * event-based so it cannot race a response that lands before a
+     * `waitForResponse`/event listener would have been armed.
+     */
+    async waitForPostAjaxCycle(timeout = 30000): Promise<void> {
+        await test.step(
+            this.workerInfo.project.name + ": Wait for Pay Now post/morph cycle to complete",
+            async () => {
+                await expect
+                    .poll(
+                        async () => this.isLoaderOverlayVisible(),
+                        { timeout, intervals: [500, 1000, 2000] },
+                    )
+                    .toBe(false);
+            }
+        );
+    }
+
+    /**
+     * Current text of the #393 silent-error toast (pay-now-error-toast.phtml),
+     * dispatched via `loki-checkout.error.silent` when a final-step PAY NOW
+     * post neither advances the step nor produces a message. Empty string
+     * when the toast is not visible.
+     */
+    async getSilentErrorToastText(): Promise<string> {
+        const toast = this.page.locator(locators.pay_now_error_toast);
+        const visible = await toast.isVisible({ timeout: 3000 }).catch(() => false);
+
+        if (!visible) {
+            return '';
+        }
+
+        return ((await toast.textContent()) || '').trim();
+    }
+
+    /**
+     * Attempts a normal (non-forced) click on the first shipping-method
+     * radio in the sidebar/summary area. While the Pay Now overlay is
+     * visible it is the top-most stacked element covering the checkout
+     * region (task 002 notes — no `pointer-events` CSS needed), so
+     * Playwright's own actionability check fails to find the radio
+     * "receiving events" and the click times out. Returns true when the
+     * click was blocked (timed out), false when it landed normally.
+     */
+    async attemptSidebarClickBlocked(timeout = 2000): Promise<boolean> {
+        return await test.step(
+            this.workerInfo.project.name + ": Attempt sidebar/shipping click while Pay Now overlay is up",
+            async () => {
+                const radio = this.page.locator(locators.shipping_radio).first();
+
+                try {
+                    await radio.click({ timeout });
+                    return false;
+                } catch {
+                    return true;
+                }
+            }
+        );
+    }
+
+    /**
+     * True when the delivery "First Name" field is still editable — used by
+     * the [6c8f0439] regression guard test to prove an invalid/incomplete
+     * submit never engages the loading overlay, so fields the user needs to
+     * fix stay reachable.
+     */
+    async isFirstNameFieldEditable(): Promise<boolean> {
+        const input = this.page.getByRole('textbox', { name: 'First Name' }).first();
+        return await input.isEditable({ timeout: 3000 }).catch(() => false);
     }
 }

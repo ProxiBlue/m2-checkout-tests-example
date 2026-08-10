@@ -59,3 +59,15 @@ export const login_password_field = '#loki-checkout-customer-customer-email-pass
 export const sign_in_button = 'button:has-text("Sign In"), button[id*="-button"]:has-text("Sign In")';
 // Shipping methods area — container rendered after address fill triggers estimation
 export const shipping_methods_area = 'input[type="radio"][name*="shipping"]';
+
+// Pay Now guard overlay + silent-error toast (GH #419 / task 003)
+// Wrapper x-data anchor from pay-now-overlay-guard.phtml — always in the DOM
+// (before.body.end, sibling of #loki-checkout — see task 002 notes); the inner
+// `[aria-busy]` div is the vendor loki-field-components loader-overlay itself,
+// x-show="showLoader" (:aria-busy mirrors the same getter) — assert visibility
+// on this inner element, not the always-present wrapper.
+export const pay_now_overlay_anchor = '#uptactics-pay-now-overlay';
+export const pay_now_overlay_loader = '#uptactics-pay-now-overlay [aria-busy]';
+// Toast from pay-now-error-toast.phtml — x-show/x-text live on the same
+// element (no separate inner node), listens for `loki-checkout.error.silent`.
+export const pay_now_error_toast = '#uptactics-pay-now-toast';
